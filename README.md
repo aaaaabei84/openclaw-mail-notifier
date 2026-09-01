@@ -17,7 +17,6 @@
 - **双通道推送**：重要邮件通过 OpenClaw 同时推送微信 + 飞书
 - **每日汇总**：17:00 输出今日邮件概况（三态：无新邮件/已推送重要/无重要）
 - **汇总守卫**：微信通道故障时自动走飞书逃生通道补发
-- **紧急邮件队列**：紧急发件人实时检测，多事件队列（不因已有事件丢弃后续）
 - **飞书失败重试队列**：推送失败消息持久化，每次最多重试 10 条
 - **TUN 代理绕过**：macOS 梯子开启时也能直连 IMAP（绑物理网卡 + 自解析 DNS）
 - **显示名防伪造**：发件人解析真实邮箱地址后精确匹配，不信任显示名
@@ -28,13 +27,11 @@
 ├── config.example.py     # 配置模板
 ├── mail_filter.py        # 核心：邮件过滤 + 推送
 ├── mail_sync.py          # 邮件完整同步（手动使用）
-├── emergency_watch.py    # 紧急发件人增量检测
-├── emergency_push.py     # 紧急事件队列与重复推送
 ├── feishu_notifier.py    # 飞书推送工具
 ├── daily_report_guard.py # 每日汇总投递守卫
 ├── mail_utils.py         # 共享模块：原子状态写入、文件锁、IMAP 响应校验
 ├── tests/
-│   └── test_mail_scripts.py  # 回归测试（11 项）
+│   └── test_mail_scripts.py  # 回归测试（8 项）
 ├── README.md
 ├── LICENSE
 └── .gitignore
@@ -98,7 +95,6 @@ python3 mail_filter.py          # 检查并推送重要邮件
 | `SUMMARY_JOB_ID` | ❌ | 汇总 cron job ID |
 | `MAIL_CLI_PATH` | ❌ | OpenClaw CLI 路径，默认 `openclaw`（注意：不要用 `OPENCLAW_CLI`，与 gateway 内置变量冲突） |
 | `MAIL_STATE_DIR` | ❌ | 状态目录，默认 `<项目根>/mail/state` |
-| `EMERGENCY_SENDER` | ❌ | 精确匹配的紧急发件人邮箱地址 |
 | `FEISHU_TIMEOUT_IS_SUCCESS` | ❌ | 飞书 CLI 超时时是否按已发送处理，默认 `1` |
 
 ## 推送通道说明
@@ -129,8 +125,6 @@ MIT
 - IMAP 单封拉取失败时不会越过该 UID 推进断点，避免永久漏信。
 - 状态 JSON 损坏时明确报错停止，不静默重置断点。
 - 飞书失败消息保留在 `filter_state.json` 的待重试队列中，每次最多重试 10 条。
-- 紧急邮件由单事件状态升级为多事件队列，不因已有事件丢弃后续。
-- 双通道均失败时保留紧急状态，不第一次失败就删除任务。
 - `--list` 是只读诊断模式，不更新断点或每日统计。
 
 ## 兼容性

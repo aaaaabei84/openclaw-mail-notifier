@@ -19,7 +19,6 @@ OPENCLAW_CLI = os.environ.get("MAIL_CLI_PATH", "openclaw")
 FEISHU_TARGET = os.environ.get("FEISHU_TARGET", "")
 WECHAT_TARGET = os.environ.get("WECHAT_TARGET", "")
 WECHAT_ACCOUNT = os.environ.get("WECHAT_ACCOUNT", "")
-EMERGENCY_SENDER = os.environ.get("EMERGENCY_SENDER", "")
 SUMMARY_JOB_ID = os.environ.get("SUMMARY_JOB_ID", "")
 
 # 某些 OpenClaw 版本会在消息已送达后仍挂住。默认保持兼容；若更重视严格确认，设为 0。

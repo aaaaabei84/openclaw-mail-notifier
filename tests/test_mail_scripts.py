@@ -21,7 +21,6 @@ config.OPENCLAW_CLI = "openclaw"
 config.FEISHU_TARGET = ""
 config.WECHAT_TARGET = ""
 config.WECHAT_ACCOUNT = ""
-config.EMERGENCY_SENDER = "urgent@example.com"
 config.SUMMARY_JOB_ID = "job"
 config.FEISHU_TIMEOUT_IS_SUCCESS = True
 config.require_mail_credentials = lambda: None
@@ -29,8 +28,6 @@ sys.modules["config"] = config
 
 import mail_utils
 import mail_filter
-import emergency_push
-import emergency_watch
 import daily_report_guard
 
 
@@ -107,36 +104,6 @@ class FilterTests(unittest.TestCase):
         state = json.loads(mail_filter.STATE_FILE.read_text())
         self.assertEqual(state["last_uid"], 1)
         self.assertEqual(state["daily"]["new_count"], 1)
-
-
-class EmergencyTests(unittest.TestCase):
-    def setUp(self):
-        self.temp = tempfile.TemporaryDirectory()
-        self.path = Path(self.temp.name) / "emergency.json"
-        emergency_push.STATE_FILE = self.path
-        emergency_push.DRY = False
-
-    def tearDown(self):
-        self.temp.cleanup()
-
-    def test_multiple_events_are_queued(self):
-        emergency_push.init("1", "a", "x", "d")
-        emergency_push.init("2", "b", "x", "d")
-        self.assertEqual(len(emergency_push.load_events()), 2)
-
-    def test_failed_delivery_keeps_event_and_round(self):
-        emergency_push.init("1", "a", "x", "d")
-        with mock.patch.object(emergency_push, "send_notification", return_value=False):
-            emergency_push.run_round()
-        event = emergency_push.load_events()[0]
-        self.assertEqual(event["round"], 0)
-        self.assertEqual(event["attempts"], 1)
-
-    def test_exact_emergency_sender_matching(self):
-        self.assertNotEqual(
-            __import__("email.utils").utils.parseaddr('"urgent@example.com" <attacker@evil.test>')[1].lower(),
-            emergency_watch.EMERGENCY_SENDER,
-        )
 
 
 class GuardTests(unittest.TestCase):
