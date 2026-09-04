@@ -7,16 +7,16 @@
 本工具依赖 **OpenClaw** 的消息通道进行推送。你需要：
 
 1. 安装并运行 OpenClaw
-2. 配置至少一个消息通道（微信或飞书）
+2. 配置飞书消息通道
 3. 确保 `openclaw` CLI 可用（或在 `MAIL_CLI_PATH` 环境变量中指定路径）
 
 ## 功能
 
 - **每小时检查**：IMAP 增量检查新邮件（`UID + 1:*`），只拉头部不拉正文（省流量）
 - **纯规则过滤**：`HARD_SKIP` / `IMPORTANT` 列表，零 token 成本
-- **双通道推送**：重要邮件通过 OpenClaw 同时推送微信 + 飞书
+- **飞书推送**：重要邮件通过 OpenClaw 飞书通道推送
 - **每日汇总**：17:00 输出今日邮件概况（三态：无新邮件/已推送重要/无重要）
-- **汇总守卫**：微信通道故障时自动走飞书逃生通道补发
+- **汇总守卫**：汇总投递失败时自动走飞书补发
 - **飞书失败重试队列**：推送失败消息持久化，每次最多重试 10 条
 - **TUN 代理绕过**：macOS 梯子开启时也能直连 IMAP（绑物理网卡 + 自解析 DNS）
 - **显示名防伪造**：发件人解析真实邮箱地址后精确匹配，不信任显示名
@@ -41,11 +41,6 @@
 
 ### 1. 配置 OpenClaw 消息通道
 
-**微信通道（企业微信）：**
-```bash
-openclaw gateway config.patch '{"channels": {"openclaw-weixin": {...}}}'
-```
-
 **飞书通道：**
 ```bash
 openclaw gateway config.patch '{"channels": {"feishu": {...}}}'
@@ -64,7 +59,6 @@ cp config.example.py config.py
 export QQ_MAIL_USER="your-email@qq.com"
 export QQ_MAIL_PASS="your-authorization-code"
 export FEISHU_TARGET="ou_xxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
-export WECHAT_TARGET="xxx@im.wechat"
 ```
 
 ### 3. 测试
@@ -89,9 +83,7 @@ python3 mail_filter.py          # 检查并推送重要邮件
 |------|------|------|
 | `QQ_MAIL_USER` | ✅ | 邮箱地址 |
 | `QQ_MAIL_PASS` | ✅ | IMAP 授权码 |
-| `FEISHU_TARGET` | ❌ | 飞书用户 ID（需先在 OpenClaw 配置飞书通道） |
-| `WECHAT_TARGET` | ❌ | 微信推送目标 ID（需先在 OpenClaw 配置微信通道） |
-| `WECHAT_ACCOUNT` | ❌ | 微信推送账号 ID |
+| `FEISHU_TARGET` | ✅ | 飞书用户 ID（需先在 OpenClaw 配置飞书通道） |
 | `SUMMARY_JOB_ID` | ❌ | 汇总 cron job ID |
 | `MAIL_CLI_PATH` | ❌ | OpenClaw CLI 路径，默认 `openclaw`（注意：不要用 `OPENCLAW_CLI`，与 gateway 内置变量冲突） |
 | `MAIL_STATE_DIR` | ❌ | 状态目录，默认 `<项目根>/mail/state` |
@@ -99,21 +91,11 @@ python3 mail_filter.py          # 检查并推送重要邮件
 
 ## 推送通道说明
 
-推送通过 OpenClaw 的消息通道实现，并非直接调用微信/飞书 API。
-
-### 微信通道（稳定性 ⚠️ 不推荐）
-
-微信开放平台的企业微信推送接口（OpenClaw 的 `openclaw-weixin` 通道）存在间歇性故障：
-- 现象：`ret=-2 prepare failed`，消息无法推送
-- 频率：每 1-2 周一次，持续 2-26 小时
-- 原因：微信服务端 `prepare` 接口（aewebpodproxy.weixin.qq.com）不稳定
-- 无法本地修复，需等待微信服务端自愈
-
-**强烈建议优先配置飞书通道。**
+推送通过 OpenClaw 的消息通道实现，并非直接调用飞书 API。
 
 ### 飞书通道（推荐 ✅）
 
-OpenClaw 的飞书消息通道相对稳定，推送失败时自动重试 3 次。
+OpenClaw 的飞书消息通道相对稳定，推送失败时自动重试 3 次（`feishu_notifier.py` 内置重试；汇总守卫兜底补发）。
 
 ## 许可证
 
@@ -138,7 +120,7 @@ MIT
 python3 -m unittest discover -s tests -v
 ```
 
-测试覆盖：原子写入、JSON 损坏、IMAP 响应校验、文件锁重叠、共享模块各工具函数。
+测试覆盖：原子写入、JSON 损坏、IMAP 响应校验、文件锁重叠、每日汇总窗口（17:00 切分）、共享模块各工具函数。
 
 ## 备份
 

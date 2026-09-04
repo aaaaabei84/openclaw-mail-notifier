@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""每日汇总投递守卫：记录失败 run，并通过微信/飞书补发。"""
+"""每日汇总投递守卫：记录失败 run，并通过飞书补发。"""
 from __future__ import annotations
 
 import datetime as dt
@@ -16,8 +16,6 @@ LOG_FILE = STATE_DIR / "daily_report_guard.log"
 LOCK_FILE = STATE_DIR / "daily_report_guard.lock"
 CLI = config.OPENCLAW_CLI
 SUMMARY_JOB_ID = config.SUMMARY_JOB_ID
-WECHAT_TARGET = config.WECHAT_TARGET
-WECHAT_ACCOUNT = config.WECHAT_ACCOUNT
 FEISHU_HELPER = str(config.BASE / "tools" / "feishu_notifier.py")
 MAX_DAILY_ATTEMPTS = 3
 DRY = "--check" in sys.argv
@@ -87,32 +85,10 @@ def send_feishu(text: str) -> bool:
 
 
 def send_notification(text: str) -> bool:
+    """仅飞书通道推送（微信通道已移除）。"""
     if DRY:
         print(f"[dry] 将发送: {text.splitlines()[0]}")
         return True
-
-    if WECHAT_TARGET:
-        args = [
-            CLI,
-            "message",
-            "send",
-            "--channel",
-            "openclaw-weixin",
-            "--target",
-            WECHAT_TARGET,
-        ]
-        if WECHAT_ACCOUNT:
-            args.extend(["--account", WECHAT_ACCOUNT])
-        args.extend(["--message", text])
-        result = run_command(args, timeout=90)
-        if result is not None:
-            output = (result.stdout or "") + (result.stderr or "")
-            if result.returncode == 0 and "ret=-2" not in output:
-                log(f"微信补发成功 rc={result.returncode} out={output[:120]}")
-                return True
-            log(f"微信补发失败 rc={result.returncode} out={output[:120]}，尝试飞书")
-    else:
-        log("WECHAT_TARGET 未配置，直接尝试飞书")
     return send_feishu(text)
 
 

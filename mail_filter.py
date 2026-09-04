@@ -17,7 +17,7 @@ import ssl
 import struct
 import subprocess
 import sys
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 
 import config
@@ -343,10 +343,20 @@ def _main_locked(daily_mode: bool, show_list: bool) -> None:
     state = load_json(STATE_FILE, {})
     last_uid = int(state.get("last_uid", 0))
 
-    today = datetime.now().strftime("%Y-%m-%d")
+    now = datetime.now()
+    today = now.strftime("%Y-%m-%d")
+    # 汇总窗口：前一天 17:00 → 当天 17:00（桶按 17:00 切分，非自然日）。
+    # 17:00 前处理的邮件计入当日桶；17:00 及之后计入次日桶，
+    # 避免当日 17:00 汇总发出后到达的邮件被计入已发桶而永不汇报。
+    report_key = today if now.hour < 17 else (now + timedelta(days=1)).strftime("%Y-%m-%d")
+
     daily = state.get("daily", {})
-    if daily.get("date") != today:
-        daily = {"date": today, "new_count": 0, "important_pushed": False}
+    if daily_mode:
+        # 17:00 汇总运行：报告今日窗口（昨日17:00 → 今日17:00），使用今日桶。
+        if daily.get("date") != today:
+            daily = {"date": today, "new_count": 0, "important_pushed": False}
+    elif daily.get("date") != report_key:
+        daily = {"date": report_key, "new_count": 0, "important_pushed": False}
 
     client = None
     important = []
@@ -421,23 +431,23 @@ def _main_locked(daily_mode: bool, show_list: bool) -> None:
     state["pending_feishu"] = pending[-200:]
     atomic_write_json(STATE_FILE, state)
 
-    # stdout 由 cron announce 走微信；只输出本轮新发现，避免飞书重试导致微信重复。
+    # 重要邮件统一走飞书（pending_feishu 带重试队列）；stdout 不再输出，
+    # 避免 cron announce 重复推送。保留 stderr 日志供 cron diagnostics 排查。
     for item in important:
-        print(f"📧 {item['subject']}")
-        print(f"发件人：{item['from']}")
-        print(f"时间：{item['date'][:25]}")
-        print()
+        print(f"📧 {item['subject']}", file=sys.stderr)
+        print(f"发件人：{item['from']}", file=sys.stderr)
+        print(f"时间：{item['date'][:25]}", file=sys.stderr)
 
     _push_feishu_pending(state)
     atomic_write_json(STATE_FILE, state)
 
     if daily_mode:
         if daily["new_count"] == 0:
-            print("📮 今日邮件汇总：无新邮件")
+            print("📮 邮件汇总（昨日17:00→今日17:00）：无新邮件")
         elif daily["important_pushed"]:
-            print(f"📮 今日邮件汇总：新增 {daily['new_count']} 封（重要邮件已单独推送）")
+            print(f"📮 邮件汇总（昨日17:00→今日17:00）：新增 {daily['new_count']} 封（重要邮件已单独推送）")
         else:
-            print(f"📮 今日邮件汇总：新增 {daily['new_count']} 封，无重要邮件")
+            print(f"📮 邮件汇总（昨日17:00→今日17:00）：新增 {daily['new_count']} 封，无重要邮件")
 
 
 def main():

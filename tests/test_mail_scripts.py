@@ -1,4 +1,5 @@
 import importlib
+import datetime as _dt
 import json
 import sys
 import tempfile
@@ -19,8 +20,6 @@ config.QQ_MAIL_USER = "user@qq.com"
 config.QQ_MAIL_PASS = "secret"
 config.OPENCLAW_CLI = "openclaw"
 config.FEISHU_TARGET = ""
-config.WECHAT_TARGET = ""
-config.WECHAT_ACCOUNT = ""
 config.SUMMARY_JOB_ID = "job"
 config.FEISHU_TIMEOUT_IS_SUCCESS = True
 config.require_mail_credentials = lambda: None
@@ -104,6 +103,54 @@ class FilterTests(unittest.TestCase):
         state = json.loads(mail_filter.STATE_FILE.read_text())
         self.assertEqual(state["last_uid"], 1)
         self.assertEqual(state["daily"]["new_count"], 1)
+
+
+class _FakeDatetime(_dt.datetime):
+    """可固定 now() 的假时钟，用于验证 17:00 窗口切分。"""
+    _now = None
+
+    @classmethod
+    def now(cls, tz=None):
+        return cls._now
+
+
+class DailyWindowTests(unittest.TestCase):
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory()
+        self.state_dir = Path(self.temp.name)
+        mail_filter.STATE_DIR = self.state_dir
+        mail_filter.STATE_FILE = self.state_dir / "filter_state.json"
+        mail_filter.LOCK_FILE = self.state_dir / "filter.lock"
+        mail_filter.config.FEISHU_TARGET = ""
+
+    def tearDown(self):
+        self.temp.cleanup()
+
+    def _run(self, when, daily_mode=False):
+        raw = b"Subject: Test\r\nFrom: friend@example.org\r\nDate: now\r\n\r\n"
+        client = FakeIMAP([1, 2], {1: raw, 2: raw})
+        _FakeDatetime._now = when
+        with mock.patch.object(mail_filter, "datetime", _FakeDatetime), \
+                mock.patch.object(mail_filter, "connect", return_value=client):
+            mail_filter._main_locked(daily_mode, False)
+        return json.loads(mail_filter.STATE_FILE.read_text())
+
+    def test_morning_run_uses_today_bucket(self):
+        state = self._run(_dt.datetime(2026, 9, 4, 10, 15))
+        self.assertEqual(state["daily"]["date"], "2026-09-04")
+        self.assertEqual(state["daily"]["new_count"], 2)
+
+    def test_evening_run_uses_next_day_bucket(self):
+        # 17:00 后处理的邮件归入次日桶，次日 17:00 汇总才会包含它们
+        state = self._run(_dt.datetime(2026, 9, 4, 18, 15))
+        self.assertEqual(state["daily"]["date"], "2026-09-05")
+        self.assertEqual(state["daily"]["new_count"], 2)
+
+    def test_daily_summary_uses_today_bucket(self):
+        # 17:00 汇总运行本身：报告今日窗口（昨日17:00 → 今日17:00）
+        state = self._run(_dt.datetime(2026, 9, 4, 17, 0), daily_mode=True)
+        self.assertEqual(state["daily"]["date"], "2026-09-04")
+        self.assertEqual(state["daily"]["new_count"], 2)
 
 
 class GuardTests(unittest.TestCase):
